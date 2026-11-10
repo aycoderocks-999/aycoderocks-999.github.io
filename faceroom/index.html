@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FaceRoom AI | Find your photos by face</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2714%27 fill=%27%231f3a5f%27/%3E%3Ccircle cx=%2711%27 cy=%2713%27 r=%272%27 fill=%27white%27/%3E%3Ccircle cx=%2721%27 cy=%2713%27 r=%272%27 fill=%27white%27/%3E%3Cpath d=%27M9 20q7 6 14 0%27 stroke=%27white%27 stroke-width=%272%27 fill=%27none%27/%3E%3C/svg%3E">
+<meta name="description" content="Upload event photos, group them by person, and find every photo of you from a selfie. Runs entirely in your browser.">
+<style>
+:root{--bg:#fff;--fg:#14213d;--muted:#5b6478;--card:#f4f6fb;--accent:#1f3a5f;--line:#dde2ee;--btn:#1f3a5f;--btnfg:#fff;--ok:#1b7f4b}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1523;--fg:#e8ecf5;--muted:#9aa5bd;--card:#18213a;--accent:#8db4ff;--line:#2a3555;--btn:#8db4ff;--btnfg:#0f1523;--ok:#5fd39a}}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+.wrap{max-width:1000px;margin:0 auto;padding:0 16px}
+header{padding:28px 0 10px}
+h1{margin:0;font-size:1.8rem}
+.sub{color:var(--muted);margin:4px 0 0}
+.privacy{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:14px 0;font-size:.92rem}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+select,input[type=text]{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+button,.btn{font:inherit;font-weight:600;padding:8px 14px;border-radius:8px;border:0;background:var(--btn);color:var(--btnfg);cursor:pointer}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,.drop:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-top:8px}
+.tabs button{background:transparent;color:var(--muted);border-radius:8px 8px 0 0;border:1px solid transparent}
+.tabs button[aria-selected=true]{color:var(--accent);border-color:var(--line);border-bottom-color:var(--bg);margin-bottom:-1px;background:var(--bg)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);margin:14px 0;cursor:pointer}
+.drop.over{border-color:var(--accent);color:var(--accent)}
+.status{min-height:1.4em;color:var(--muted);font-size:.92rem;margin:6px 0}
+progress{width:100%;height:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:12px 0}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;padding:0;text-align:left;color:var(--fg)}
+.tile img{display:block;width:100%;aspect-ratio:1;object-fit:cover}
+.tile .cap{padding:6px 10px;font-size:.88rem}
+.person img{aspect-ratio:1;object-position:center}
+.empty{color:var(--muted);text-align:center;padding:30px 0}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.me{width:84px;height:84px;border-radius:50%;object-fit:cover;border:2px solid var(--line)}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+.lb.on{display:flex}
+.lbbox{position:relative;max-width:100%;max-height:100%}
+.lbbox img{display:block;max-width:92vw;max-height:88vh}
+.fbox{position:absolute;border:2px solid #fff;border-radius:4px;box-shadow:0 0 0 1px #0006}
+.fbox.hit{border-color:#3ddc84;border-width:3px}
+.lb .x{position:absolute;top:12px;right:12px}
+.back{margin:10px 0}
+footer{color:var(--muted);font-size:.85rem;padding:24px 0 40px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>FaceRoom AI</h1>
+  <p class="sub">Upload event photos, group them by person, and find every photo of you from a selfie.</p>
+</header>
+<div class="privacy"><strong>Private by design.</strong> Face detection and matching run entirely in your browser. Your photos are never uploaded to a server. They are saved only on this device, and you can delete a room at any time.</div>
+
+<div class="bar">
+  <label for="room">Room</label>
+  <select id="room"></select>
+  <button class="ghost" id="newRoom">New room</button>
+  <button class="ghost" id="delRoom">Delete room</button>
+</div>
+
+<div class="tabs" role="tablist">
+  <button role="tab" id="t-people" aria-selected="true" aria-controls="p-people">People</button>
+  <button role="tab" id="t-photos" aria-selected="false" aria-controls="p-photos">All photos</button>
+  <button role="tab" id="t-find" aria-selected="false" aria-controls="p-find">Find me</button>
+</div>
+
+<div id="loadstatus" class="status" role="status">Loading face models…</div>
+
+<section id="p-people" role="tabpanel">
+  <div id="drop" class="drop" tabindex="0" role="button" aria-label="Add photos">
+    <strong>Add event photos</strong><br>Drop images here or click to choose (JPG, PNG, WebP)
+    <input id="files" type="file" accept="image/*" multiple hidden>
+  </div>
+  <progress id="prog" value="0" max="1" hidden></progress>
+  <div id="status" class="status" role="status"></div>
+  <div id="peopleView"></div>
+</section>
+
+<section id="p-photos" role="tabpanel" hidden>
+  <div id="photosView"></div>
+</section>
+
+<section id="p-find" role="tabpanel" hidden>
+  <p>Upload a clear selfie. FaceRoom finds every photo in this room that has you in it.</p>
+  <div class="row">
+    <button id="selfieBtn">Choose a selfie</button>
+    <input id="selfie" type="file" accept="image/*" capture="user" hidden>
+    <img id="meImg" class="me" alt="Your selfie" hidden>
+  </div>
+  <div id="findStatus" class="status" role="status"></div>
+  <div id="findView"></div>
+</section>
+
+<footer>Built with face-api.js (MIT). Matching is approximate: results can include mistakes, especially with small, blurred or side-on faces.</footer>
+</div>
+
+<div id="lb" class="lb" role="dialog" aria-modal="true" aria-label="Photo viewer">
+  <button class="x" id="lbx">Close</button>
+  <div class="lbbox" id="lbbox"></div>
+</div>
+
+<script src="vendor/face-api.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const CLUSTER_DIST = 0.5, SEARCH_DIST = 0.55, MIN_FACE = 40, MAX_SIDE = 1280;
+const state = { room: null, photos: [], faces: [], ready: false, busy: false };
+const urls = new Map();
+let db = null;
+
+/* ---------- storage (IndexedDB with in-memory fallback) ---------- */
+const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function openDB() {
+  try {
+    db = await new Promise((res, rej) => {
+      const r = indexedDB.open('faceroom', 1);
+      r.onupgradeneeded = () => {
+        for (const n of ['photos', 'faces']) r.result.createObjectStore(n, { keyPath: 'id', autoIncrement: true }).createIndex('room', 'room');
+      };
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+  } catch (e) { db = null; }
+}
+async function dbAll(store, room) { if (!db) return []; try { return await req(db.transaction(store).objectStore(store).index('room').getAll(room)); } catch (e) { return []; } }
+async function dbAdd(store, obj) {
+  if (!db) return (dbAdd.n = (dbAdd.n || 0) + 1);
+  try { return await req(db.transaction(store, 'readwrite').objectStore(store).add(obj)); } catch (e) { return (dbAdd.n = (dbAdd.n || 0) + 1); }
+}
+async function dbDropRoom(room) {
+  if (!db) return;
+  for (const s of ['photos', 'faces']) {
+    try {
+      const keys = await req(db.transaction(s).objectStore(s).index('room').getAllKeys(room));
+      const t = db.transaction(s, 'readwrite'); keys.forEach(k => t.objectStore(s).delete(k));
+    } catch (e) {}
+  }
+}
+const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+/* ---------- helpers ---------- */
+const dist = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return Math.sqrt(s); };
+function photoUrl(p) { if (!urls.has(p.id)) urls.set(p.id, URL.createObjectURL(p.blob)); return urls.get(p.id); }
+const photoById = id => state.photos.find(p => p.id === id);
+function setStatus(msg) { $('#status').textContent = msg; }
+
+/* ---------- faces ---------- */
+async function loadModels() {
+  try { await faceapi.tf.setBackend('webgl'); } catch (e) {}
+  try { await faceapi.tf.ready(); } catch (e) {}
+  await faceapi.nets.ssdMobilenetv1.loadFromUri('models');
+  await faceapi.nets.faceLandmark68Net.loadFromUri('models');
+  await faceapi.nets.faceRecognitionNet.loadFromUri('models');
+  state.ready = true;
+  $('#loadstatus').textContent = 'Ready. Models loaded in your browser (' + faceapi.tf.getBackend() + ').';
+}
+async function toCanvas(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close && bmp.close();
+  return c;
+}
+const OPTS = () => new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
+async function detect(canvas) {
+  const all = await faceapi.detectAllFaces(canvas, OPTS()).withFaceLandmarks().withFaceDescriptors();
+  return all.filter(d => Math.min(d.detection.box.width, d.detection.box.height) >= MIN_FACE);
+}
+function crop(canvas, box, size) {
+  const pad = 0.3, cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  const side = Math.max(box.width, box.height) * (1 + pad * 2);
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  c.getContext('2d').drawImage(canvas, cx - side / 2, cy - side / 2, side, side, 0, 0, size, size);
+  return c.toDataURL('image/jpeg', 0.8);
+}
+async function addPhoto(file) {
+  const canvas = await toCanvas(file);
+  const dets = await detect(canvas);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+  const photo = { room: state.room, blob, w: canvas.width, h: canvas.height, name: file.name };
+  photo.id = await dbAdd('photos', photo);
+  state.photos.push(photo);
+  for (const d of dets) {
+    const b = d.detection.box;
+    const face = { room: state.room, photoId: photo.id, box: { x: b.x, y: b.y, w: b.width, h: b.height }, desc: Array.from(d.descriptor), thumb: crop(canvas, b, 112) };
+    face.id = await dbAdd('faces', face);
+    state.faces.push(face);
+  }
+  return dets.length;
+}
+function cluster() {
+  const sorted = [...state.faces].sort((a, b) => b.box.w * b.box.h - a.box.w * a.box.h);
+  const cl = [];
+  for (const f of sorted) {
+    let best = null, bd = Infinity;
+    for (const c of cl) { const d = dist(f.desc, c.centroid); if (d < bd) { bd = d; best = c; } }
+    if (best && bd < CLUSTER_DIST) {
+      best.faces.push(f);
+      const n = best.faces.length;
+      best.centroid = best.centroid.map((v, i) => v + (f.desc[i] - v) / n);
+    } else cl.push({ faces: [f], centroid: f.desc.slice() });
+  }
+  return cl.sort((a, b) => new Set(b.faces.map(f => f.photoId)).size - new Set(a.faces.map(f => f.photoId)).size);
+}
+
+/* ---------- views ---------- */
+function tile(src, cap, onclick, cls) {
+  const b = document.createElement('button'); b.className = 'tile ' + (cls || ''); b.type = 'button';
+  const i = document.createElement('img'); i.src = src; i.alt = cap; i.loading = 'lazy';
+  const c = document.createElement('div'); c.className = 'cap'; c.textContent = cap;
+  b.append(i, c); b.onclick = onclick; return b;
+}
+function photoGrid(photoIds, highlightFaces) {
+  const g = document.createElement('div'); g.className = 'grid';
+  for (const id of photoIds) {
+    const p = photoById(id); if (!p) continue;
+    g.append(tile(photoUrl(p), p.name, () => openLightbox(p, highlightFaces)));
+  }
+  return g;
+}
+function renderPeople(personIdx) {
+  const v = $('#peopleView'); v.textContent = '';
+  if (!state.faces.length) { v.innerHTML = '<div class="empty">No faces yet. Add some event photos above.</div>'; return; }
+  const cl = cluster();
+  if (personIdx != null) {
+    const c = cl[personIdx];
+    const back = document.createElement('button'); back.className = 'ghost back'; back.textContent = '← All people'; back.onclick = () => renderPeople();
+    const ids = [...new Set(c.faces.map(f => f.photoId))];
+    const h = document.createElement('h2'); h.textContent = 'Person ' + (personIdx + 1) + ' · ' + ids.length + ' photo' + (ids.length === 1 ? '' : 's');
+    v.append(back, h, photoGrid(ids, new Set(c.faces.map(f => f.id))));
+    return;
+  }
+  const info = document.createElement('p'); info.className = 'sub';
+  info.textContent = state.photos.length + ' photos · ' + state.faces.length + ' faces · ' + cl.length + ' people';
+  const g = document.createElement('div'); g.className = 'grid';
+  cl.forEach((c, i) => {
+    const n = new Set(c.faces.map(f => f.photoId)).size;
+    const rep = c.faces.reduce((a, b) => (b.box.w > a.box.w ? b : a));
+    g.append(tile(rep.thumb, 'Person ' + (i + 1) + ' · ' + n + ' photo' + (n === 1 ? '' : 's'), () => renderPeople(i), 'person'));
+  });
+  v.append(info, g);
+}
+function renderPhotos() {
+  const v = $('#photosView'); v.textContent = '';
+  if (!state.photos.length) { v.innerHTML = '<div class="empty">No photos in this room yet.</div>'; return; }
+  v.append(photoGrid(state.photos.map(p => p.id)));
+}
+function openLightbox(p, hits) {
+  const box = $('#lbbox'); box.textContent = '';
+  const img = document.createElement('img'); img.src = photoUrl(p); img.alt = p.name;
+  box.append(img);
+  for (const f of state.faces.filter(f => f.photoId === p.id)) {
+    const d = document.createElement('div'); d.className = 'fbox' + (hits && hits.has(f.id) ? ' hit' : '');
+    Object.assign(d.style, { left: f.box.x / p.w * 100 + '%', top: f.box.y / p.h * 100 + '%', width: f.box.w / p.w * 100 + '%', height: f.box.h / p.h * 100 + '%' });
+    box.append(d);
+  }
+  $('#lb').classList.add('on'); $('#lbx').focus();
+}
+const closeLb = () => $('#lb').classList.remove('on');
+
+/* ---------- rooms ---------- */
+function rooms() { return lsGet('fr_rooms', ['My event']); }
+function renderRoomSelect() {
+  const s = $('#room'); s.textContent = '';
+  for (const r of rooms()) { const o = document.createElement('option'); o.value = o.textContent = r; s.append(o); }
+  s.value = state.room;
+}
+async function switchRoom(name) {
+  state.room = name; lsSet('fr_room', name);
+  for (const u of urls.values()) URL.revokeObjectURL(u); urls.clear();
+  state.photos = await dbAll('photos', name); state.faces = await dbAll('faces', name);
+  renderRoomSelect(); renderPeople(); renderPhotos();
+  $('#findView').textContent = ''; $('#findStatus').textContent = ''; $('#meImg').hidden = true;
+}
+
+/* ---------- events ---------- */
+async function handleFiles(files) {
+  if (!state.ready) { setStatus('Still loading models, try again in a moment.'); return; }
+  if (state.busy) return;
+  const list = [...files].filter(f => f.type.startsWith('image/'));
+  if (!list.length) return;
+  state.busy = true; const prog = $('#prog'); prog.hidden = false; prog.max = list.length; prog.value = 0;
+  let found = 0, failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    setStatus('Processing photo ' + (i + 1) + ' of ' + list.length + '…');
+    try { found += await addPhoto(list[i]); } catch (e) { failed++; }
+    prog.value = i + 1;
+    await new Promise(r => setTimeout(r, 0));
+  }
+  prog.hidden = true; state.busy = false;
+  setStatus('Done. Found ' + found + ' face' + (found === 1 ? '' : 's') + ' in ' + (list.length - failed) + ' photo' + (list.length - failed === 1 ? '' : 's') + (failed ? ' (' + failed + ' could not be read)' : '') + '.');
+  renderPeople(); renderPhotos();
+}
+async function findMe(file) {
+  const st = $('#findStatus'), out = $('#findView'); out.textContent = '';
+  if (!state.ready) { st.textContent = 'Still loading models, try again in a moment.'; return; }
+  if (!state.faces.length) { st.textContent = 'Add event photos first (People tab).'; return; }
+  st.textContent = 'Looking at your selfie…';
+  try {
+    const canvas = await toCanvas(file);
+    const dets = await detect(canvas);
+    const me = $('#meImg');
+    if (!dets.length) { st.textContent = 'No face found in that image. Try a clear, front-facing selfie.'; return; }
+    const main = dets.reduce((a, b) => (b.detection.box.width > a.detection.box.width ? b : a));
+    me.src = crop(canvas, main.detection.box, 168); me.hidden = false;
+    const q = Array.from(main.descriptor), hits = new Set(), best = new Map();
+    for (const f of state.faces) {
+      const d = dist(q, f.desc);
+      if (d < SEARCH_DIST) { hits.add(f.id); best.set(f.photoId, Math.min(best.get(f.photoId) ?? 9, d)); }
+    }
+    const ids = [...best.keys()].sort((a, b) => best.get(a) - best.get(b));
+    st.textContent = ids.length ? 'Found you in ' + ids.length + ' photo' + (ids.length === 1 ? '' : 's') + ' (best matches first).' : 'No matches in this room.';
+    if (ids.length) out.append(photoGrid(ids, hits));
+  } catch (e) { st.textContent = 'Could not read that image.'; }
+}
+function setTab(name) {
+  for (const n of ['people', 'photos', 'find']) {
+    $('#t-' + n).setAttribute('aria-selected', String(n === name));
+    $('#p-' + n).hidden = n !== name;
+  }
+}
+
+async function init() {
+  await openDB();
+  const rs = rooms(); lsSet('fr_rooms', rs);
+  const saved = lsGet('fr_room', rs[0]);
+  await switchRoom(rs.includes(saved) ? saved : rs[0]);
+
+  const drop = $('#drop'), files = $('#files');
+  drop.onclick = () => files.click();
+  drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); files.click(); } };
+  files.onchange = () => { handleFiles(files.files); files.value = ''; };
+  ['dragover', 'dragenter'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+  $('#selfieBtn').onclick = () => $('#selfie').click();
+  $('#selfie').onchange = e => { if (e.target.files[0]) findMe(e.target.files[0]); e.target.value = ''; };
+  $('#room').onchange = e => switchRoom(e.target.value);
+  $('#newRoom').onclick = () => {
+    const n = (prompt('Name for the new room:') || '').trim().slice(0, 40);
+    if (!n) return; const rs = rooms(); if (!rs.includes(n)) { rs.push(n); lsSet('fr_rooms', rs); } switchRoom(n);
+  };
+  $('#delRoom').onclick = async () => {
+    if (!confirm('Delete room "' + state.room + '" and all its photos from this device?')) return;
+    await dbDropRoom(state.room);
+    let rs = rooms().filter(r => r !== state.room); if (!rs.length) rs = ['My event'];
+    lsSet('fr_rooms', rs); switchRoom(rs[0]);
+  };
+  for (const n of ['people', 'photos', 'find']) $('#t-' + n).onclick = () => setTab(n);
+  $('#lbx').onclick = closeLb;
+  $('#lb').onclick = e => { if (e.target.id === 'lb') closeLb(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLb(); });
+
+  try { await loadModels(); } catch (e) { $('#loadstatus').textContent = 'Could not load the face models. Check your connection and reload.'; }
+}
+init();
+window.__fr = { state, handleFiles, findMe, cluster };
+})();
+</script>
+</body>
+</html>
